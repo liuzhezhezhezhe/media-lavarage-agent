@@ -29,7 +29,10 @@ Execution rules:
 - Keep the original thesis, stance, and logic intact.
 - Increase clarity and impact, but do not fabricate facts.
 - Follow every platform rule listed below as hard compliance constraints.
-- If conflict appears between "more viral" and "less distortion," choose less distortion."""
+- If conflict appears between "more viral" and "less distortion," choose less distortion.
+- If viewpoint is clear but evidence is weak, strengthen support for medium/substack/reddit
+  with concrete reasoning and examples; do not invent fake statistics, fake citations,
+  or unverifiable specific claims."""
 
 PLATFORM_INSTRUCTIONS = {
 
@@ -125,6 +128,8 @@ CONTENT REQUIREMENTS
 - Write in natural prose; Medium prizes storytelling and genuine human voice above all.
 - Keep the argument sharp: state what you believe, what you reject, and why.
 - Translate complex ideas into plain language without removing analytical depth.
+- If source evidence is thin but thesis is clear, add defensible support via
+  mechanism-level reasoning, realistic scenario examples, and explicit assumptions.
 
 PROPAGATION PLAYBOOK (creator-oriented)
 - Open with a high-signal first paragraph that states the problem and your thesis quickly.
@@ -202,6 +207,8 @@ CONTENT SHAPING FOR SPREAD
 - End with a question that invites substantive reply, not performative engagement.
 - Optimize for forwardability: include one quotable insight readers can share.
 - Treat title as a testable lever: prefer variant-friendly wording that can be A/B tested.
+- If argument support is insufficient, proactively enrich with grounded examples,
+  causal logic, and clearly labeled uncertainty boundaries.
 
 TONE & STYLE
 - Write as if addressing a specific person who already reads and trusts you.
@@ -275,6 +282,8 @@ CONTENT SHAPING FOR DISCUSSION VELOCITY
 - Take a clear position, then include one uncertainty or limitation to invite high-quality debate.
 - Use concrete examples over abstract claims; avoid "all-angle" generic explainers.
 - Prefer a conversational argument arc: context → claim → evidence/example → open question.
+- If stance is clear but evidence is weak, add practical evidence scaffolding:
+  observable examples, causal reasoning, and concise counterargument handling.
 
 AI CONTENT
 Approximately 17% of the largest subreddits had explicit AI content rules as of 2024,

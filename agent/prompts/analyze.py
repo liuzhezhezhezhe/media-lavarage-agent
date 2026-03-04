@@ -79,6 +79,12 @@ RIGOR CHECK (apply before scoring)
 - Distinguish "strong tone" from "strong thesis": confidence without defensible claims is weakness.
 - Prioritize transmission quality: can readers quote, debate, and remember the core claim?
 
+PLATFORM THRESHOLD PRINCIPLE
+- Use stricter thresholds for long-form platforms ("medium", "substack", "reddit").
+- Use a lighter threshold for "x": a single sharp, clear, discussable claim can be publishable
+  even without full long-form evidence density.
+- Do not force long-form standards onto short-form X judgments.
+
 "platform_assessments"  (array of exactly 4 objects, one per platform)
   Each object must include:
   - "platform" (string): one of "x", "medium", "substack", "reddit"
@@ -97,12 +103,18 @@ RIGOR CHECK (apply before scoring)
   - If uncertain, prefer false for that specific platform.
   - Penalize content that is generic, over-hedged, bloated, or hard to retell.
   - Reward ideas with strong hook potential, clear conflict/tension, and discussability.
-  - For X and Reddit, heavily penalize abstract summaries without a sharp angle.
+  - For X, allow concise viewpoint-first content; require sharp angle + clarity, not full essay-grade proof.
+  - For Reddit, penalize abstract summaries without concrete community relevance.
   - For Medium and Substack, penalize hot takes without mechanism/evidence.
 
 Top-level fields are still required for backward compatibility, but they should
 represent an overall aggregate view. Platform-level decisions should be made
 from platform_assessments.
+
+TOP-LEVEL PUBLISHABLE CALIBRATION
+- Do not set top-level "publishable" by averaging long-form standards.
+- If content is reasonably suitable for at least one platform (especially X) and risk is not high,
+  top-level "publishable" should usually be true.
 
 LANGUAGE RULES (critical)
 - Keep ALL JSON keys exactly as specified in English for parser compatibility.
