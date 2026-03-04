@@ -245,10 +245,10 @@ async def _run_pipeline(
             if normalized_assessments:
                 analysis["platform_assessments"] = normalized_assessments
 
-        # Global publishability is a coarse gate; platform_assessments refines it.
-        if not analysis.get("publishable"):
-            platforms: list[str] = []
-        elif platform_decisions:
+        # Prefer per-platform publishability when available.
+        # Global `analysis.publishable` can be conservative and should not block
+        # platform-specific positives (e.g. x ❌ but medium/substack ✅).
+        if platform_decisions:
             ordered_candidates = list(candidate_platforms)
 
             # If platform assessments include additional platforms that route() omitted,
@@ -268,6 +268,8 @@ async def _run_pipeline(
                 if allowed is False:
                     continue
                 platforms.append(platform)
+        elif not analysis.get("publishable"):
+            platforms = []
         else:
             platforms = candidate_platforms
 
@@ -315,11 +317,20 @@ async def _run_pipeline(
         analysis_msg = formatter.format_analysis(analysis, thought_id)
         await update.message.reply_text(analysis_msg, parse_mode=ParseMode.MARKDOWN_V2)
 
-        # Send each platform output
-        for platform in platforms:
-            output_content = platform_outputs.get(platform, "")
-            msg_text, _ = formatter.format_platform_output(platform, output_content, thought_id)
-            await update.message.reply_text(msg_text, parse_mode=ParseMode.MARKDOWN_V2)
+        # Send concise generation summary; users can inspect details via /show
+        platform_list = ", ".join(platforms)
+        summary_text = str(analysis.get("summary", "")).strip() or "(no summary)"
+        quick_show_lines = "\n".join(
+            f"- /show {thought_id} {platform}" for platform in platforms
+        )
+        await update.message.reply_text(
+            "✅ Rewrite completed\n\n"
+            f"结论/总结：{summary_text}\n"
+            f"已生成平台：{platform_list}\n\n"
+            f"查看全部：/show {thought_id}\n"
+            "查看单个平台：\n"
+            f"{quick_show_lines}"
+        )
 
         return True
 
@@ -354,11 +365,11 @@ async def cmd_help(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         "*Content*\n"
         "/chat \\- Explore ideas with AI \\(use /analyze afterward to publish\\)\n"
         "/process \\- Process mode \\(paste text or upload a file\\)\n"
-        "/analyze \\- Analyze accumulated messages \\(chat uses current session\\)\n"
+        "/analyze \\- Analyze and show conclusion \\+ generated platforms \\(/show for full outputs\\)\n"
         "/tag \\[label\\] \\- Place a marker at the current position\n\n"
         "*Records*\n"
         "/history \\- Last 10 processed records\n"
-        "/show \\<id\\> \\- View full analysis and platform outputs for a record\n\n"
+        "/show \\<id\\> \\[platform\\] \\- View full record \\(platform: x, medium, substack, reddit; case\\-insensitive\\)\n\n"
         "/clear \\- Clear all your stored data\n\n"
         "*Other*\n"
         "/style \\[text\\] \\- Set your personal rewrite style \\(or view current with /style\\)\n"
@@ -638,7 +649,10 @@ async def cmd_history(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
     uid = _uid(update)
     records = db.get_history(uid, limit=10)
     msg = formatter.format_history(records)
-    await update.message.reply_text(msg, parse_mode=ParseMode.MARKDOWN_V2)
+    try:
+        await update.message.reply_text(msg, parse_mode=ParseMode.MARKDOWN_V2)
+    except Exception:
+        await update.message.reply_text("No records yet." if not records else msg)
 
 
 # ── /clear ───────────────────────────────────────────────────────────────────
@@ -669,7 +683,10 @@ async def cmd_show(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         return
 
     if not context.args:
-        await update.message.reply_text("Usage: /show <id>")
+        await update.message.reply_text(
+            "Usage: /show <id> [platform]\n"
+            "platform: x | medium | substack | reddit (case-insensitive)"
+        )
         return
 
     try:
@@ -684,9 +701,42 @@ async def cmd_show(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         await update.message.reply_text(f"❌ Record #{thought_id} not found (or no permission).")
         return
 
-    messages = formatter.format_full_record(result["thought"], result["outputs"])
-    for msg in messages:
+    platform_filter: str | None = None
+    if len(context.args) >= 2:
+        platform_filter = context.args[1].strip().lower()
+        valid_platforms = {"x", "medium", "substack", "reddit"}
+        if platform_filter not in valid_platforms:
+            await update.message.reply_text(
+                "❌ Invalid platform. Use one of: x, medium, substack, reddit (case-insensitive)."
+            )
+            return
+
+    summary_messages = formatter.format_full_record(result["thought"], [])
+    for msg in summary_messages:
         await update.message.reply_text(msg, parse_mode=ParseMode.MARKDOWN_V2)
+
+    selected_outputs = result["outputs"]
+    if platform_filter:
+        selected_outputs = [
+            output for output in result["outputs"]
+            if str(output.get("platform", "")).strip().lower() == platform_filter
+        ]
+
+    if not selected_outputs:
+        if platform_filter:
+            await update.message.reply_text(
+                f"⚠️ No output found for platform '{platform_filter}' in record #{thought_id}."
+            )
+        else:
+            await update.message.reply_text("⚠️ No platform outputs found for this record.")
+        return
+
+    for output in selected_outputs:
+        platform = output.get("platform", "")
+        content = output.get("content", "")
+        full_messages = formatter.format_platform_output_full(platform, content)
+        for msg_text in full_messages:
+            await update.message.reply_text(msg_text, parse_mode=ParseMode.MARKDOWN)
 
 
 # ── plain text (store, no reply) ──────────────────────────────────────────────
@@ -767,9 +817,35 @@ async def chat_handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE
         await update.message.reply_text(_GENERIC_CHAT_ERR)
         return CHATTING
 
+    rendered_reply = formatter.normalize_chat_markdown(reply)
     history.append({"role": "assistant", "content": reply})
-    bot_message = await update.message.reply_text(reply)
-    db.save_chat_message(uid, cid, bot_message.message_id, f"Assistant: {reply}")
+
+    chunks = formatter.split_chat_reply(rendered_reply)
+    first_message_id: int | None = None
+    total = len(chunks)
+
+    for idx, chunk in enumerate(chunks, start=1):
+        if total > 1:
+            chunk_to_send = f"(Part {idx}/{total})\n\n{chunk}"
+        else:
+            chunk_to_send = chunk
+
+        try:
+            sent = await update.message.reply_text(
+                chunk_to_send,
+                parse_mode=ParseMode.MARKDOWN,
+            )
+        except Exception:
+            sent = await update.message.reply_text(chunk_to_send)
+
+        if first_message_id is None:
+            first_message_id = sent.message_id
+
+    if first_message_id is None:
+        bot_message = await update.message.reply_text(reply)
+        first_message_id = bot_message.message_id
+
+    db.save_chat_message(uid, cid, first_message_id, f"Assistant: {reply}")
     return CHATTING
 
 

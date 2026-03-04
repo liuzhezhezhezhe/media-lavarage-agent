@@ -4,9 +4,11 @@ import sys
 from urllib.parse import urlparse
 
 from telegram import BotCommand
+from telegram.error import NetworkError
 from telegram.ext import (
     Application,
     CommandHandler,
+    ContextTypes,
     MessageHandler,
     filters,
 )
@@ -36,15 +38,36 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 
+async def _on_app_error(update: object, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Global PTB error handler to avoid noisy unhandled exception traces.
+
+    Transient network disconnects can happen during long polling and are usually
+    auto-recovered by PTB's retry loop.
+    """
+    err = context.error
+    if isinstance(err, NetworkError):
+        err_text = str(err).lower()
+        if "can't parse entities" in err_text or "bad request" in err_text:
+            logger.error("Telegram message formatting/request error: %s", err)
+            return
+        logger.warning("Transient Telegram network error: %s", err)
+        return
+
+    logger.error(
+        "Unhandled application error",
+        exc_info=(type(err), err, err.__traceback__) if err else None,
+    )
+
+
 async def _set_commands(app: Application) -> None:
     await app.bot.set_my_commands([
         BotCommand("chat",    "Explore ideas with AI"),
         BotCommand("process", "Process content (paste text or upload a file)"),
-        BotCommand("analyze", "Analyze accumulated messages (chat uses current session)"),
+        BotCommand("analyze", "Analyze and show summary; use /show for full outputs"),
         BotCommand("tag",     "Place a marker at the current position"),
         BotCommand("style",   "Set your personal rewrite style"),
         BotCommand("history", "Last 10 processed records"),
-        BotCommand("show",    "View full record by ID"),
+        BotCommand("show",    "View record by ID (optional platform)"),
         BotCommand("clear",   "Clear all your stored data"),
         BotCommand("status",  "Show bot status"),
         BotCommand("help",    "Show all commands"),
@@ -88,6 +111,9 @@ def main() -> None:
 
     # Register ConversationHandler first (higher priority)
     app.add_handler(build_conversation())
+
+    # Global error handler
+    app.add_error_handler(_on_app_error)
 
     # Register command handlers
     app.add_handler(CommandHandler("start", cmd_start))
