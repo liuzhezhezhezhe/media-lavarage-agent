@@ -88,8 +88,8 @@ User input (text / file / conversation)
 ### Installation
 
 ```bash
-git clone https://github.com/liuzhezhezhezhe/media_lavarage_agent.git
-cd media_lavarage_agent
+git clone https://github.com/liuzhezhezhezhe/media-lavarage-agent.git
+cd media-lavarage-agent
 
 python3 -m venv .venv
 source .venv/bin/activate   # Windows: .venv\Scripts\activate
@@ -300,8 +300,8 @@ Recommended: a VPS with **webhook mode** enabled.
 
 ```bash
 # On the server
-git clone https://github.com/liuzhezhezhezhe/media_lavarage_agent.git
-cd media_lavarage_agent
+git clone https://github.com/liuzhezhezhezhe/media-lavarage-agent.git
+cd media-lavarage-agent
 python3.11 -m venv .venv && source .venv/bin/activate
 pip install -e .
 cp .env.example .env && cp config/users.json.example config/users.json
@@ -315,11 +315,11 @@ After=network.target
 
 [Service]
 User=ubuntu
-WorkingDirectory=/home/ubuntu/media_lavarage_agent
-ExecStart=/home/ubuntu/media_lavarage_agent/.venv/bin/python main.py
+WorkingDirectory=/home/ubuntu/media-lavarage-agent
+ExecStart=/home/ubuntu/media-lavarage-agent/.venv/bin/python main.py
 Restart=always
 RestartSec=5
-EnvironmentFile=/home/ubuntu/media_lavarage_agent/.env
+EnvironmentFile=/home/ubuntu/media-lavarage-agent/.env
 
 [Install]
 WantedBy=multi-user.target
@@ -343,7 +343,7 @@ sudo systemctl restart caddy
 ## Project Structure
 
 ```
-media_lavarage_agent/
+media-lavarage-agent/
 ├── main.py                    # Entry point (production)
 ├── dev.py                     # Entry point (hot reload)
 ├── config.py                  # pydantic-settings (reads .env)
