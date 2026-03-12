@@ -35,12 +35,14 @@ Medium article, Substack newsletter, or Reddit post.
 
 - **Content analysis** — evaluates idea type, novelty, clarity, and publishing risk via LLM
 - **Multi-platform rewriting** — routes to best-fit platforms and generates a tailored version for each
+- **Live web grounding** — optional Tavily-backed search adds current hot-topic context and fresher evidence
 - **Tag system** — mark a conversation point, then batch-analyze everything after it
 - **File upload** — `.txt` / `.md` / `.json` / `.csv`, up to 20 MB
 - **History** — retrieve any past record with `/show <id>` or `/show <id> <platform>`
 - **Hot-reload allowlist** — add or remove users in `config/users.json` without restarting
 - **Basic rate limiting** — per-user request caps for chat and processing flows
 - **Multi-LLM** — Anthropic Claude, OpenAI, GitHub Copilot (unofficial), or any custom endpoint
+- **Optional search agent** — separate from the main LLM backend, so realtime grounding does not require changing your model provider
 
 ---
 
@@ -51,7 +53,7 @@ User input (text / file / conversation)
          │
          ▼
   ┌─────────────┐
-  │   Analyze   │  LLM call #1 — outputs global metrics + per-platform assessments
+       │   Analyze   │  LLM call #1 — can use live search for current events and hot terms
   └──────┬──────┘
          │
          ▼
@@ -66,7 +68,7 @@ User input (text / file / conversation)
          │
          ▼
   ┌─────────────┐
-  │   Rewrite   │  LLM call per platform — generates X thread / Medium / Substack / Reddit
+  │   Rewrite   │  LLM call per platform — can inject live evidence to strengthen weak chains
   └──────┬──────┘
          │
          ▼
@@ -139,6 +141,14 @@ OPENAI_BASE_URL=https://api.openai.com/v1
 GITHUB_TOKEN=gho_...
 COPILOT_MODEL=gpt-4o
 
+# Optional live web search
+SEARCH_PROVIDER=disabled
+TAVILY_API_KEY=tvly-...
+TAVILY_BASE_URL=https://api.tavily.com/search
+SEARCH_TOPIC=auto
+SEARCH_MAX_RESULTS=3
+SEARCH_TIMEOUT_SECONDS=12
+
 # Webhook — leave empty to use polling (default)
 # WEBHOOK_URL=https://yourdomain.com/bot
 # WEBHOOK_SECRET=your-random-secret
@@ -168,6 +178,27 @@ RATE_LIMIT_CHAT_PER_WINDOW=20
 ```
 
 Changes take effect immediately — no bot restart required.
+
+### Live search
+
+If you want analyze, chat, and rewrite to understand newer hot terms or add fresher evidence,
+enable the separate search agent:
+
+```dotenv
+SEARCH_PROVIDER=tavily
+TAVILY_API_KEY=tvly-...
+SEARCH_TOPIC=auto
+```
+
+Behavior:
+
+- The bot first uses the LLM to decide whether live search is actually needed. Timeless reasoning or pure style edits skip search entirely.
+- Ambiguous hot terms are resolved from local context first; if ambiguity remains, the search planner can issue alternate queries to disambiguate meanings before injecting evidence.
+- In `/chat`, the bot can explain recent releases, hot topics, and trending terms with live context.
+- In `/analyze`, current context can affect novelty, risk, and publishability judgments.
+- In `/rewrite`, live search results can strengthen the evidence chain without replacing the main LLM provider.
+
+If search is disabled or not configured, the bot falls back to the previous offline-only behavior.
 
 ---
 

@@ -150,10 +150,14 @@ LANGUAGE RULES (critical)
   Avoid: "Statistics about remote work" or "The async argument"
 
 ─────────────────────────────────────────────────────────────
-CONTENT TO ANALYZE
+USER INPUT CONTENT TO ANALYZE
 ─────────────────────────────────────────────────────────────
 
 {content}
+
+EXTERNAL WEB SEARCH EVIDENCE (optional; not user input)
+
+{web_context}
 
 ─────────────────────────────────────────────────────────────
 

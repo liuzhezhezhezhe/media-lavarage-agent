@@ -23,7 +23,7 @@ from config import settings
 from bot.auth import auth
 from bot import formatter
 from bot.file_parser import parse_file
-from agent.llm import get_llm_client
+from agent.llm import get_llm_client, get_search_agent
 from agent.modules.analyze import analyze
 from agent.modules.route import route
 from agent.modules.rewrite import rewrite
@@ -187,12 +187,13 @@ async def _run_pipeline(
 
     try:
         llm = get_llm_client()
+        search_agent = get_search_agent()
         cid = _cid(update)
 
         # LLM call #1: analyze
         async with _typing(context, cid):
             analysis = await _with_network_retry(
-                lambda: analyze(content, llm),
+                lambda: analyze(content, llm, search_agent=search_agent),
                 "Analyze call",
             )
 
@@ -300,7 +301,14 @@ async def _run_pipeline(
 
             async with _typing(context, cid):
                 platform_outputs[platform] = await _with_network_retry(
-                    lambda: rewrite(content, platform, platform_analysis, llm, user_style=user_style),
+                    lambda: rewrite(
+                        content,
+                        platform,
+                        platform_analysis,
+                        llm,
+                        user_style=user_style,
+                        search_agent=search_agent,
+                    ),
                     f"Rewrite call ({platform})",
                 )
 
@@ -373,7 +381,7 @@ async def cmd_help(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         "/clear \\- Clear all your stored data\n\n"
         "*Other*\n"
         "/style \\[text\\] \\- Set your personal rewrite style \\(or view current with /style\\)\n"
-        "/status \\- Show bot status and configuration\n"
+        "/status \\- Show bot status, model, and live search configuration\n"
         "/whoami \\- Show your Telegram ID\n"
         "/cancel \\- Exit current mode"
     )
@@ -393,6 +401,11 @@ async def cmd_status(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
         "custom": settings.openai_model,
     }
     model = model_map.get(provider, "unknown")
+    search_provider = settings.search_provider.lower()
+    if search_provider == "tavily" and settings.tavily_api_key:
+        search_status = f"{search_provider} / {settings.search_topic}"
+    else:
+        search_status = "disabled"
 
     uid = _uid(update)
     authorized = auth.is_authorized(uid)
@@ -402,6 +415,7 @@ async def cmd_status(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
     text = (
         "⚙️ *Bot Status*\n\n"
         f"🤖 LLM: `{formatter.escape(provider)}` / `{formatter.escape(model)}`\n"
+        f"🔎 Search: `{formatter.escape(search_status)}`\n"
         f"📊 Your records: `{count}`\n"
         f"👤 Access: {auth_icon}"
     )
@@ -806,9 +820,20 @@ async def chat_handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE
 
     try:
         llm = get_llm_client()
+        search_agent = get_search_agent()
+        system_prompt = chat_prompts.SYSTEM
+        if search_agent.enabled:
+            live_context = await search_agent.build_prompt_context(
+                stage="chat",
+                text=user_text,
+                llm=llm,
+                history=history,
+            )
+            if live_context:
+                system_prompt = f"{system_prompt}{live_context}"
         async with _typing(context, cid):
             response = await _with_network_retry(
-                lambda: llm.chat(chat_prompts.SYSTEM, history),
+                lambda: llm.chat(system_prompt, history),
                 "Chat call",
             )
         reply = response.content

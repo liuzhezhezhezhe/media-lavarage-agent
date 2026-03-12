@@ -22,6 +22,14 @@ class Settings(BaseSettings):
     github_token: str = ""
     copilot_model: str = "gpt-4o"
 
+    # Optional live web search
+    search_provider: str = "disabled"  # disabled | tavily
+    tavily_api_key: str = ""
+    tavily_base_url: str = "https://api.tavily.com/search"
+    search_topic: str = "auto"  # auto | general | news
+    search_max_results: int = Field(default=3, ge=1, le=10)
+    search_timeout_seconds: float = Field(default=12.0, ge=1.0, le=60.0)
+
     # Webhook (optional — leave empty to use polling)
     # Set to a publicly reachable HTTPS URL when deploying to a server,
     # e.g. https://yourdomain.com/bot  (path is used as the listen path)

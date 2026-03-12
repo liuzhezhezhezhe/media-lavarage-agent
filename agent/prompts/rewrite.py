@@ -332,7 +332,7 @@ TONE & STYLE
 - Keep the original edge of the viewpoint; avoid turning conflict into bland consensus.""",
 }
 
-USER_TEMPLATE = """Original content:
+USER_TEMPLATE = """USER INPUT CONTENT:
 ---
 {content}
 ---
@@ -340,6 +340,9 @@ USER_TEMPLATE = """Original content:
 Analysis summary: {summary}
 Key points: {key_points}
 User custom style preference: {style_instruction}
+
+EXTERNAL WEB SEARCH EVIDENCE (optional; not user input):
+{web_context}
 
 {platform_instruction}
 

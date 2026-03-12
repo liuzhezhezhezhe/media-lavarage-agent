@@ -1,4 +1,5 @@
 from agent.llm.base import LLMClient
+from agent.llm.web_search import SearchAgent
 
 
 def get_llm_client() -> LLMClient:
@@ -41,3 +42,16 @@ def get_llm_client() -> LLMClient:
         )
 
     raise ValueError(f"Unknown LLM_PROVIDER: {provider!r}")
+
+
+def get_search_agent() -> SearchAgent:
+    from config import settings
+
+    return SearchAgent(
+        provider=settings.search_provider,
+        api_key=settings.tavily_api_key,
+        base_url=settings.tavily_base_url,
+        max_results=settings.search_max_results,
+        timeout_seconds=settings.search_timeout_seconds,
+        topic=settings.search_topic,
+    )

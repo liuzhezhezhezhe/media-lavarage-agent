@@ -1,4 +1,5 @@
 from agent.llm.base import LLMClient, LLMResponse
+from agent.llm.web_search import SearchAgent
 from agent.prompts import rewrite as prompts
 
 
@@ -8,6 +9,7 @@ async def rewrite(
     analysis: dict,
     llm: LLMClient,
     user_style: str | None = None,
+    search_agent: SearchAgent | None = None,
 ) -> str:
     """Generate platform-specific content version."""
     platform_instruction = prompts.PLATFORM_INSTRUCTIONS.get(
@@ -54,12 +56,21 @@ async def rewrite(
         )
     key_points_str = "\n".join(f"- {p}" for p in key_points) if key_points else "(none extracted)"
     style_instruction = (user_style or "").strip() or "(none)"
+    web_context = ""
+    if search_agent:
+        web_context = await search_agent.build_prompt_context(
+            stage="rewrite",
+            text=content,
+            llm=llm,
+            analysis=analysis,
+        )
 
     user_prompt = prompts.USER_TEMPLATE.format(
         content=content,
         summary=analysis.get("summary", ""),
         key_points=key_points_str,
         style_instruction=style_instruction,
+        web_context=web_context,
         platform_instruction=platform_instruction,
         platform=platform,
     )

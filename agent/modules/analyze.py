@@ -1,12 +1,24 @@
 import json
 import re
 from agent.llm.base import LLMClient, LLMResponse
+from agent.llm.web_search import SearchAgent
 from agent.prompts import analyze as prompts
 
 
-async def analyze(content: str, llm: LLMClient) -> dict:
+async def analyze(content: str, llm: LLMClient, search_agent: SearchAgent | None = None) -> dict:
     """Call LLM to analyze content. Returns parsed analysis dict."""
-    user_prompt = prompts.USER_TEMPLATE.format(content=content)
+    web_context = ""
+    if search_agent:
+        web_context = await search_agent.build_prompt_context(
+            stage="analyze",
+            text=content,
+            llm=llm,
+        )
+
+    user_prompt = prompts.USER_TEMPLATE.format(
+        content=content,
+        web_context=web_context,
+    )
     response: LLMResponse = await llm.complete(
         system=prompts.SYSTEM,
         user=user_prompt,
