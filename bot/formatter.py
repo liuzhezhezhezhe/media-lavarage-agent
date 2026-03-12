@@ -120,6 +120,28 @@ def _extract_labeled_fields(content: str, labels: tuple[str, ...]) -> tuple[dict
     return fields, body.strip()
 
 
+def _extract_reddit_fields(content: str) -> tuple[dict[str, str], str]:
+    """Extract Reddit PostType/Title/Body contract fields."""
+    raw = (content or "").strip()
+    fields: dict[str, str] = {}
+
+    for label in ("PostType", "Title"):
+        pattern = rf"(?im)^{label}\s*:\s*(.+)$"
+        match = re.search(pattern, raw)
+        if match:
+            fields[label.lower()] = match.group(1).strip()
+            raw = re.sub(pattern + r"\n?", "", raw, count=1)
+
+    body_match = re.search(r"(?ims)^Body\s*:\s*(.*)$", raw)
+    if body_match:
+        inline_body = body_match.group(1).strip()
+        raw = re.sub(r"(?ims)^Body\s*:\s*", "", raw, count=1).strip()
+        if inline_body and not raw.startswith(inline_body):
+            raw = f"{inline_body}\n\n{raw}".strip()
+
+    return fields, raw.strip()
+
+
 def _truncate_plain(text: str, max_len: int) -> str:
     if len(text) <= max_len:
         return text
@@ -261,6 +283,33 @@ def format_platform_output_full(platform: str, content: str) -> list[str]:
                 messages.append(prefix + chunk + content_suffix)
         return messages
 
+    if platform == "reddit":
+        fields, body = _extract_reddit_fields(content)
+        post_type = _sanitize_code_block(fields.get("posttype") or "(missing)")
+        title = _sanitize_code_block(fields.get("title") or "(missing)")
+        body = _sanitize_code_block(body or content)
+
+        meta_message = (
+            f"{icon} *{platform_name}*\n\n"
+            "*Post Type*\n"
+            f"```\n{post_type}\n```\n"
+            "*Title*\n"
+            f"```\n{title}\n```"
+        )
+        messages.append(meta_message)
+
+        content_prefix = f"{icon} *{platform_name}*\n\n*Body*\n```\n"
+        content_suffix = "\n```"
+        max_body_len = max(1, _MAX_INLINE_CHARS - len(content_prefix) - len(content_suffix))
+        body_chunks = _split_plain_chunks(body, max_body_len)
+        if len(body_chunks) == 1:
+            messages.append(content_prefix + body_chunks[0] + content_suffix)
+        else:
+            for idx, chunk in enumerate(body_chunks, start=1):
+                prefix = f"{icon} *{platform_name}*\n\n*Body (Part {idx}/{len(body_chunks)})*\n```\n"
+                messages.append(prefix + chunk + content_suffix)
+        return messages
+
     sanitized_body = _sanitize_code_block(content)
     prefix = f"{icon} *{platform_name}*\n\n*Copy-ready content*\n```\n"
     suffix = "\n```"
@@ -357,6 +406,31 @@ def format_platform_output(platform: str, content: str, thought_id: int) -> tupl
             f"*{fourth_label}*\n"
             f"```\n{canonical_or_subject}\n```\n"
             "*Content*\n"
+            "```\n"
+        )
+        suffix = "\n```"
+
+        full = prefix + body + suffix
+        if len(full) <= _MAX_INLINE_CHARS:
+            return full, False
+
+        max_body_len = _MAX_INLINE_CHARS - len(prefix) - len(suffix) - len(footer)
+        truncated_body = _truncate_plain(body, max(max_body_len, 0))
+        return prefix + truncated_body + suffix + footer, True
+
+    if platform == "reddit":
+        fields, body = _extract_reddit_fields(content)
+        post_type = _sanitize_code_block(fields.get("posttype") or "(missing)")
+        title = _sanitize_code_block(fields.get("title") or "(missing)")
+        body = _sanitize_code_block(body or content)
+
+        prefix = (
+            f"{icon} *{platform_name}*\n\n"
+            "*Post Type*\n"
+            f"```\n{post_type}\n```\n"
+            "*Title*\n"
+            f"```\n{title}\n```\n"
+            "*Body*\n"
             "```\n"
         )
         suffix = "\n```"

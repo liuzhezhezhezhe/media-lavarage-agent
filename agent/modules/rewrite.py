@@ -3,6 +3,85 @@ from agent.llm.web_search import SearchAgent
 from agent.prompts import rewrite as prompts
 
 
+def _build_reddit_priority(analysis: dict, key_points: list[str]) -> str:
+    """Return Reddit mode guidance based on the analyzed source type."""
+    idea_type = (analysis.get("idea_type") or "").strip().lower()
+
+    type_guidance: dict[str, tuple[str, list[str]]] = {
+        "opinion": (
+            "DISCUSSION_POST",
+            [
+                "Lead with the take, not the backstory.",
+                "Frame the post around one disagreement, tradeoff, or tension people can react to.",
+            ],
+        ),
+        "analysis": (
+            "DISCUSSION_POST",
+            [
+                "Turn the analysis into one interpretable pattern or implication, not a full explainer.",
+                "Make the body answer: what should this community notice or reconsider?",
+            ],
+        ),
+        "news": (
+            "DISCUSSION_POST",
+            [
+                "Do not rewrite the news article. Focus on the one angle this community is most likely to debate.",
+                "Assume readers can look up details elsewhere; keep only the context needed for discussion.",
+            ],
+        ),
+        "tutorial": (
+            "QUESTION_POST",
+            [
+                "Do not post a step-by-step guide by default.",
+                "Reframe the material into a practical question, workflow tradeoff, or 'how are people doing this?' post.",
+            ],
+        ),
+        "story": (
+            "EXPERIENCE_POST",
+            [
+                "Keep the personal or observed moment, but strip it down to the part others can relate to.",
+                "Use one concrete detail, then pivot quickly to the broader pattern or question.",
+            ],
+        ),
+        "essay": (
+            "EXPERIENCE_POST",
+            [
+                "Do not preserve the full reflective arc.",
+                "Condense it into one lived observation or thought that invites other people to compare notes.",
+            ],
+        ),
+        "thread": (
+            "DISCUSSION_POST",
+            [
+                "Do not convert each point into a list.",
+                "Pick the single most discussable point and build the post around that.",
+            ],
+        ),
+    }
+
+    preferred_type, bullets = type_guidance.get(
+        idea_type,
+        (
+            "DISCUSSION_POST",
+            [
+                "Favor the most discussable angle over the most complete summary.",
+                "Make the body feel native to a subreddit conversation, not to a publishing platform.",
+            ],
+        ),
+    )
+
+    guidance_lines = [
+        "\n\nRUNTIME PRIORITY FOR THIS INPUT:",
+        f"- Preferred Reddit PostType for this source: {preferred_type}.",
+    ]
+    guidance_lines.extend(f"- {bullet}" for bullet in bullets)
+    if len(key_points) >= 3:
+        guidance_lines.append(
+            "- The source contains multiple points. Choose the one angle most likely to trigger replies and ignore the rest."
+        )
+    return "\n".join(guidance_lines)
+
+
 async def rewrite(
     content: str,
     platform: str,
@@ -53,6 +132,19 @@ async def rewrite(
             "  Tags: ...\n"
             "- Then add one blank line, then the full body content.\n"
             "- Do not omit any of the four labels, and do not rename labels."
+        )
+    if platform == "reddit":
+        platform_instruction += _build_reddit_priority(analysis, key_points)
+        platform_instruction += (
+            "\n\nRUNTIME OUTPUT CONTRACT (strict):\n"
+            "- Start with exactly three labeled lines in this order:\n"
+            "  PostType: DISCUSSION_POST or QUESTION_POST or EXPERIENCE_POST\n"
+            "  Title: ...\n"
+            "  Body:\n"
+            "- Then add one blank line, then the full post body.\n"
+            "- The body must end with one open-ended discussion question.\n"
+            "- Do not output an article, essay, or newsletter-style structure.\n"
+            "- Do not omit any label, and do not rename labels."
         )
     key_points_str = "\n".join(f"- {p}" for p in key_points) if key_points else "(none extracted)"
     style_instruction = (user_style or "").strip() or "(none)"
