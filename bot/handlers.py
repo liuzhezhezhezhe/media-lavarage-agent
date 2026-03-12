@@ -38,11 +38,15 @@ CHATTING = 2
 _RATE_LIMIT_WINDOW_SECONDS = settings.rate_limit_window_seconds
 _RATE_LIMIT_PIPELINE_PER_WINDOW = settings.rate_limit_pipeline_per_window
 _RATE_LIMIT_CHAT_PER_WINDOW = settings.rate_limit_chat_per_window
+_CHAT_MERGE_WINDOW_SECONDS = settings.chat_merge_window_seconds
 
 _GENERIC_PIPELINE_ERR = "❌ Processing failed. Please try again shortly."
 _GENERIC_FILE_ERR = "❌ File parsing failed. Please try again later."
 _GENERIC_CHAT_ERR = "❌ Chat failed temporarily. Please try again later."
 _MAX_REWRITE_STYLE_CHARS = 800
+_CHAT_PENDING_INPUT_KEY = "chat_pending_input"
+_CHAT_SESSION_TOKEN_KEY = "chat_session_token"
+_CHAT_MERGE_TYPING_DELAY_SECONDS = 0.35
 
 _rate_limit_buckets: dict[tuple[int, str], deque[float]] = {}
 _NETWORK_RETRY_ATTEMPTS = 3
@@ -52,7 +56,12 @@ _RetryT = TypeVar("_RetryT")
 
 
 @asynccontextmanager
-async def _typing(context: ContextTypes.DEFAULT_TYPE, chat_id: int):
+async def _typing(
+    context: ContextTypes.DEFAULT_TYPE,
+    chat_id: int,
+    *,
+    expected_session_token: int | None = None,
+):
     """Sends TYPING chat action repeatedly until the block exits.
 
     Telegram expires the indicator after ~5 s, so we refresh every 4 s.
@@ -61,6 +70,11 @@ async def _typing(context: ContextTypes.DEFAULT_TYPE, chat_id: int):
 
     async def _loop():
         while not stop.is_set():
+            if (
+                expected_session_token is not None
+                and _current_chat_session_token(context) != expected_session_token
+            ):
+                return
             try:
                 await context.bot.send_chat_action(chat_id=chat_id, action=ChatAction.TYPING)
             except Exception:
@@ -171,6 +185,174 @@ async def _deny(update: Update) -> None:
     await update.message.reply_text(
         _UNAUTHORIZED_MSG.format(user_id=uid),
         parse_mode=ParseMode.MARKDOWN,
+    )
+
+
+def _advance_chat_session_token(context: ContextTypes.DEFAULT_TYPE) -> int:
+    token = int(context.user_data.get(_CHAT_SESSION_TOKEN_KEY, 0)) + 1
+    context.user_data[_CHAT_SESSION_TOKEN_KEY] = token
+    return token
+
+
+def _current_chat_session_token(context: ContextTypes.DEFAULT_TYPE) -> int:
+    return int(context.user_data.get(_CHAT_SESSION_TOKEN_KEY, 0))
+
+
+def _cancel_pending_chat_input(context: ContextTypes.DEFAULT_TYPE) -> None:
+    pending = context.user_data.pop(_CHAT_PENDING_INPUT_KEY, None)
+    if not isinstance(pending, dict):
+        return
+
+    for key in ("task", "typing_task"):
+        task = pending.get(key)
+        if isinstance(task, asyncio.Task) and not task.done():
+            task.cancel()
+
+
+async def _typing_during_merge_wait(
+    *,
+    context: ContextTypes.DEFAULT_TYPE,
+    chat_id: int,
+    expected_revision: int,
+    expected_session_token: int,
+) -> None:
+    try:
+        await asyncio.sleep(_CHAT_MERGE_TYPING_DELAY_SECONDS)
+        while True:
+            pending = context.user_data.get(_CHAT_PENDING_INPUT_KEY)
+            if (
+                not isinstance(pending, dict)
+                or pending.get("revision") != expected_revision
+                or _current_chat_session_token(context) != expected_session_token
+            ):
+                return
+            await context.bot.send_chat_action(chat_id=chat_id, action=ChatAction.TYPING)
+            await asyncio.sleep(4)
+    except asyncio.CancelledError:
+        return
+    except Exception:
+        return
+
+
+async def _send_chat_reply(
+    *,
+    context: ContextTypes.DEFAULT_TYPE,
+    chat_id: int,
+    uid: int,
+    reply: str,
+) -> None:
+    rendered_reply = formatter.normalize_chat_markdown(reply)
+
+    chunks = formatter.split_chat_reply(rendered_reply)
+    total = len(chunks)
+
+    first_message_id: int | None = None
+    for idx, chunk in enumerate(chunks, start=1):
+        if total > 1:
+            chunk_to_send = f"(Part {idx}/{total})\n\n{chunk}"
+        else:
+            chunk_to_send = chunk
+
+        try:
+            sent = await context.bot.send_message(
+                chat_id=chat_id,
+                text=chunk_to_send,
+                parse_mode=ParseMode.MARKDOWN,
+            )
+        except Exception:
+            sent = await context.bot.send_message(
+                chat_id=chat_id,
+                text=chunk_to_send,
+            )
+
+        if first_message_id is None:
+            first_message_id = sent.message_id
+
+    if first_message_id is None:
+        bot_message = await context.bot.send_message(
+            chat_id=chat_id,
+            text=reply,
+        )
+        first_message_id = bot_message.message_id
+
+    db.save_chat_message(uid, chat_id, first_message_id, f"Assistant: {reply}")
+
+
+async def _flush_pending_chat_input(
+    *,
+    context: ContextTypes.DEFAULT_TYPE,
+    uid: int,
+    cid: int,
+    expected_revision: int,
+    expected_session_token: int,
+) -> None:
+    try:
+        await asyncio.sleep(_CHAT_MERGE_WINDOW_SECONDS)
+    except asyncio.CancelledError:
+        return
+
+    pending = context.user_data.get(_CHAT_PENDING_INPUT_KEY)
+    if (
+        not isinstance(pending, dict)
+        or pending.get("revision") != expected_revision
+        or _current_chat_session_token(context) != expected_session_token
+    ):
+        return
+
+    texts = [str(item) for item in pending.get("texts", []) if str(item).strip()]
+    if not texts:
+        context.user_data.pop(_CHAT_PENDING_INPUT_KEY, None)
+        return
+
+    typing_task = pending.get("typing_task")
+    if isinstance(typing_task, asyncio.Task) and not typing_task.done():
+        typing_task.cancel()
+
+    context.user_data.pop(_CHAT_PENDING_INPUT_KEY, None)
+
+    bundled_text = "\n\n".join(texts)
+
+    if _current_chat_session_token(context) != expected_session_token:
+        return
+
+    history: list[dict] = context.user_data.setdefault("chat_history", [])
+    history.append({"role": "user", "content": bundled_text})
+
+    try:
+        llm = get_llm_client()
+        search_agent = get_search_agent()
+        system_prompt = chat_prompts.SYSTEM
+        if search_agent.enabled:
+            live_context = await search_agent.build_prompt_context(
+                stage="chat",
+                text=bundled_text,
+                llm=llm,
+                history=history,
+            )
+            if live_context:
+                system_prompt = f"{system_prompt}{live_context}"
+        async with _typing(context, cid, expected_session_token=expected_session_token):
+            response = await _with_network_retry(
+                lambda: llm.chat_safe(system_prompt, history),
+                "Chat call",
+            )
+        reply = response.content
+    except Exception:
+        history.pop()
+        logger.exception("Chat LLM error")
+        if _current_chat_session_token(context) == expected_session_token:
+            await context.bot.send_message(chat_id=cid, text=_GENERIC_CHAT_ERR)
+        return
+
+    if _current_chat_session_token(context) != expected_session_token:
+        return
+
+    history.append({"role": "assistant", "content": reply})
+    await _send_chat_reply(
+        context=context,
+        chat_id=cid,
+        uid=uid,
+        reply=reply,
     )
 
 
@@ -333,10 +515,10 @@ async def _run_pipeline(
         )
         await update.message.reply_text(
             "✅ Rewrite completed\n\n"
-            f"结论/总结：{summary_text}\n"
-            f"已生成平台：{platform_list}\n\n"
-            f"查看全部：/show {thought_id}\n"
-            "查看单个平台：\n"
+            f"Conclusion/Summary: {summary_text}\n"
+            f"Generated platforms: {platform_list}\n\n"
+            f"View all: /show {thought_id}\n"
+            "View a single platform:\n"
             f"{quick_show_lines}"
         )
 
@@ -403,7 +585,7 @@ async def cmd_status(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
     model = model_map.get(provider, "unknown")
     search_provider = settings.search_provider.lower()
     if search_provider == "tavily" and settings.tavily_api_key:
-        search_status = f"{search_provider} / {settings.search_topic}"
+        search_status = search_provider
     else:
         search_status = "disabled"
 
@@ -509,6 +691,9 @@ async def cmd_analyze(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
     uid = _uid(update)
     cid = _cid(update)
     session_start = context.user_data.get("chat_session_start")
+    if session_start:
+        _advance_chat_session_token(context)
+    _cancel_pending_chat_input(context)
 
     allowed, retry_after = _check_rate_limit(uid, "pipeline", _RATE_LIMIT_PIPELINE_PER_WINDOW)
     if not allowed:
@@ -678,6 +863,8 @@ async def cmd_clear(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
 
     uid = _uid(update)
     deleted = db.clear_user_data(uid)
+    _advance_chat_session_token(context)
+    _cancel_pending_chat_input(context)
     context.user_data.pop("chat_session_start", None)
     context.user_data.pop("chat_history", None)
 
@@ -784,6 +971,8 @@ async def cmd_chat(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
         await _deny(update)
         return ConversationHandler.END
 
+    _cancel_pending_chat_input(context)
+    _advance_chat_session_token(context)
     context.user_data["chat_session_start"] = datetime.now(timezone.utc).isoformat()
     context.user_data["chat_history"] = []
     await update.message.reply_text(
@@ -815,62 +1004,38 @@ async def chat_handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE
     # Store to DB so /analyze can access this conversation later
     db.save_chat_message(uid, cid, mid, f"User: {user_text}")
 
-    history: list[dict] = context.user_data.setdefault("chat_history", [])
-    history.append({"role": "user", "content": user_text})
+    pending = context.user_data.get(_CHAT_PENDING_INPUT_KEY)
+    if not isinstance(pending, dict):
+        pending = {"texts": [], "revision": 0, "task": None, "typing_task": None}
+        context.user_data[_CHAT_PENDING_INPUT_KEY] = pending
 
-    try:
-        llm = get_llm_client()
-        search_agent = get_search_agent()
-        system_prompt = chat_prompts.SYSTEM
-        if search_agent.enabled:
-            live_context = await search_agent.build_prompt_context(
-                stage="chat",
-                text=user_text,
-                llm=llm,
-                history=history,
-            )
-            if live_context:
-                system_prompt = f"{system_prompt}{live_context}"
-        async with _typing(context, cid):
-            response = await _with_network_retry(
-                lambda: llm.chat(system_prompt, history),
-                "Chat call",
-            )
-        reply = response.content
-    except Exception as exc:
-        logger.exception("Chat LLM error")
-        await update.message.reply_text(_GENERIC_CHAT_ERR)
-        return CHATTING
+    pending.setdefault("texts", []).append(user_text)
+    pending["revision"] = int(pending.get("revision", 0)) + 1
 
-    rendered_reply = formatter.normalize_chat_markdown(reply)
-    history.append({"role": "assistant", "content": reply})
+    for key in ("task", "typing_task"):
+        task = pending.get(key)
+        if isinstance(task, asyncio.Task) and not task.done():
+            task.cancel()
 
-    chunks = formatter.split_chat_reply(rendered_reply)
-    first_message_id: int | None = None
-    total = len(chunks)
-
-    for idx, chunk in enumerate(chunks, start=1):
-        if total > 1:
-            chunk_to_send = f"(Part {idx}/{total})\n\n{chunk}"
-        else:
-            chunk_to_send = chunk
-
-        try:
-            sent = await update.message.reply_text(
-                chunk_to_send,
-                parse_mode=ParseMode.MARKDOWN,
-            )
-        except Exception:
-            sent = await update.message.reply_text(chunk_to_send)
-
-        if first_message_id is None:
-            first_message_id = sent.message_id
-
-    if first_message_id is None:
-        bot_message = await update.message.reply_text(reply)
-        first_message_id = bot_message.message_id
-
-    db.save_chat_message(uid, cid, first_message_id, f"Assistant: {reply}")
+    revision = int(pending["revision"])
+    session_token = _current_chat_session_token(context)
+    pending["task"] = asyncio.create_task(
+        _flush_pending_chat_input(
+            context=context,
+            uid=uid,
+            cid=cid,
+            expected_revision=revision,
+            expected_session_token=session_token,
+        )
+    )
+    pending["typing_task"] = asyncio.create_task(
+        _typing_during_merge_wait(
+            context=context,
+            chat_id=cid,
+            expected_revision=revision,
+            expected_session_token=session_token,
+        )
+    )
     return CHATTING
 
 
@@ -882,6 +1047,8 @@ def _discard_chat_session(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
     Called on any exit that is NOT /analyze, so discarded messages are never
     picked up by a future /analyze call.
     """
+    _advance_chat_session_token(context)
+    _cancel_pending_chat_input(context)
     session_start = context.user_data.pop("chat_session_start", None)
     context.user_data.pop("chat_history", None)
     if session_start:
@@ -894,6 +1061,17 @@ async def _chat_to_process(update: Update, context: ContextTypes.DEFAULT_TYPE) -
     """CHATTING → WAITING_CONTENT: discard chat session, enter process mode."""
     _discard_chat_session(update, context)
     return await cmd_process(update, context)
+
+
+async def _reject_chat_restart(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    """CHATTING → CHATTING: reject /chat while a chat session is already active."""
+    await update.message.reply_text(
+        "Current state: you are already in chat mode.\n\n"
+        "This command will not start a new conversation while the current one is active.\n"
+        "If you want a new chat session, use /cancel first, then send /chat again.\n"
+        "You can also use /analyze to finish this conversation and continue from there."
+    )
+    return CHATTING
 
 
 async def _process_to_chat(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
@@ -971,6 +1149,7 @@ def build_conversation() -> ConversationHandler:
                 MessageHandler(~filters.COMMAND,                process_invalid_input),
             ],
             CHATTING: [
+                CommandHandler("chat",    _reject_chat_restart),
                 CommandHandler("process", _chat_to_process),
                 CommandHandler("style",   _style_in_chat),
                 CommandHandler("tag",     _exit_tag_from_chat),

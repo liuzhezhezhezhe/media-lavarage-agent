@@ -145,7 +145,6 @@ COPILOT_MODEL=gpt-4o
 SEARCH_PROVIDER=disabled
 TAVILY_API_KEY=tvly-...
 TAVILY_BASE_URL=https://api.tavily.com/search
-SEARCH_TOPIC=auto
 SEARCH_MAX_RESULTS=3
 SEARCH_TIMEOUT_SECONDS=12
 
@@ -162,6 +161,9 @@ USERS_CONFIG=config/users.json
 RATE_LIMIT_WINDOW_SECONDS=60
 RATE_LIMIT_PIPELINE_PER_WINDOW=6
 RATE_LIMIT_CHAT_PER_WINDOW=20
+
+# Chat input merge window
+CHAT_MERGE_WINDOW_SECONDS=2.5
 ```
 
 ### `config/users.json`
@@ -187,7 +189,6 @@ enable the separate search agent:
 ```dotenv
 SEARCH_PROVIDER=tavily
 TAVILY_API_KEY=tvly-...
-SEARCH_TOPIC=auto
 ```
 
 Behavior:
@@ -233,6 +234,7 @@ either mode, the following rules apply:
 | `/clear` | Clears all your stored data and exits the mode. |
 | `/process` (in chat mode) | Switches directly to process mode. Chat session data is **discarded**. |
 | `/chat` (in process mode) | Switches directly to chat mode. |
+| `/chat` (in chat mode) | Rejected explicitly. Use `/cancel`, then `/chat`, to start a fresh chat session. |
 
 ### `/show` examples
 
@@ -264,10 +266,10 @@ Bot:  📊 Analysis Results
        - Substack ❌ | N:5/10 | C:5/10 | Risk: medium
        - Reddit ✅ | N:7/10 | C:6/10 | Risk: low
 Bot:  ✅ Rewrite completed
-       结论/总结: ...
-       已生成平台: x, medium
-       查看全部: /show <id>
-       查看单个平台: /show <id> x
+       Conclusion/Summary: ...
+       Generated platforms: x, medium
+       View all: /show <id>
+       View a single platform: /show <id> x
 ```
 
 ### Flow 2 — Tag system
@@ -302,6 +304,7 @@ Bot:  [analysis + generated platform summary + /show guidance]
 > `/analyze` in chat mode analyzes only messages generated in that chat session.
 > `/cancel` exits chat mode and **discards** all messages from the session.
 > Switching to `/process` mid-chat also discards the chat session.
+> Consecutive user messages sent within `CHAT_MERGE_WINDOW_SECONDS` are bundled into one chat turn before the bot replies.
 
 ### File upload
 

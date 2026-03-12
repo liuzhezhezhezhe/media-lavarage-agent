@@ -14,9 +14,16 @@ class AnthropicClient(LLMClient):
             system=system,
             messages=[{"role": "user", "content": user}],
         )
-        content = msg.content[0].text if msg.content else ""
+        content = "".join(block.text for block in msg.content if getattr(block, "type", "") == "text")
+        finish_reason = msg.stop_reason or ""
         tokens = (msg.usage.input_tokens or 0) + (msg.usage.output_tokens or 0)
-        return LLMResponse(content=content, tokens_used=tokens, model=self._model)
+        return LLMResponse(
+            content=content,
+            tokens_used=tokens,
+            model=self._model,
+            finish_reason=finish_reason,
+            is_truncated=self._is_truncated_finish_reason(finish_reason),
+        )
 
     async def chat(self, system: str, messages: list[dict], max_tokens: int = 1024) -> LLMResponse:
         msg = await self._client.messages.create(
@@ -25,6 +32,13 @@ class AnthropicClient(LLMClient):
             system=system,
             messages=messages,
         )
-        content = msg.content[0].text if msg.content else ""
+        content = "".join(block.text for block in msg.content if getattr(block, "type", "") == "text")
+        finish_reason = msg.stop_reason or ""
         tokens = (msg.usage.input_tokens or 0) + (msg.usage.output_tokens or 0)
-        return LLMResponse(content=content, tokens_used=tokens, model=self._model)
+        return LLMResponse(
+            content=content,
+            tokens_used=tokens,
+            model=self._model,
+            finish_reason=finish_reason,
+            is_truncated=self._is_truncated_finish_reason(finish_reason),
+        )

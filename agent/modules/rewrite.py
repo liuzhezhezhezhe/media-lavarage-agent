@@ -77,7 +77,7 @@ async def rewrite(
 
     max_tokens = 2048 if platform in ("medium", "substack") else 512
 
-    response: LLMResponse = await llm.complete(
+    response: LLMResponse = await llm.complete_safe(
         system=prompts.SYSTEM,
         user=user_prompt,
         max_tokens=max_tokens,

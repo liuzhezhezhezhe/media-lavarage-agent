@@ -138,8 +138,15 @@ class CopilotClient(LLMClient):
             messages=[{"role": "system", "content": system}] + messages,
         )
         content = resp.choices[0].message.content or ""
+        finish_reason = resp.choices[0].finish_reason or ""
         tokens = resp.usage.total_tokens if resp.usage else 0
-        return LLMResponse(content=content, tokens_used=tokens, model=self._model)
+        return LLMResponse(
+            content=content,
+            tokens_used=tokens,
+            model=self._model,
+            finish_reason=finish_reason,
+            is_truncated=self._is_truncated_finish_reason(finish_reason),
+        )
 
     async def complete(self, system: str, user: str, max_tokens: int = 4096) -> LLMResponse:
         token = await self._ensure_copilot_token()
@@ -157,5 +164,12 @@ class CopilotClient(LLMClient):
             ],
         )
         content = resp.choices[0].message.content or ""
+        finish_reason = resp.choices[0].finish_reason or ""
         tokens = resp.usage.total_tokens if resp.usage else 0
-        return LLMResponse(content=content, tokens_used=tokens, model=self._model)
+        return LLMResponse(
+            content=content,
+            tokens_used=tokens,
+            model=self._model,
+            finish_reason=finish_reason,
+            is_truncated=self._is_truncated_finish_reason(finish_reason),
+        )

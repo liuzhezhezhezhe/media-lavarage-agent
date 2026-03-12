@@ -19,7 +19,7 @@ async def analyze(content: str, llm: LLMClient, search_agent: SearchAgent | None
         content=content,
         web_context=web_context,
     )
-    response: LLMResponse = await llm.complete(
+    response: LLMResponse = await llm.complete_safe(
         system=prompts.SYSTEM,
         user=user_prompt,
         max_tokens=1024,

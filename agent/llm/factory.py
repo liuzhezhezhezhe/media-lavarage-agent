@@ -53,5 +53,4 @@ def get_search_agent() -> SearchAgent:
         base_url=settings.tavily_base_url,
         max_results=settings.search_max_results,
         timeout_seconds=settings.search_timeout_seconds,
-        topic=settings.search_topic,
     )

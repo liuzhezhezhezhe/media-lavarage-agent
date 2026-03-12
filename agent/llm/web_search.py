@@ -24,14 +24,12 @@ class SearchAgent:
         base_url: str = "https://api.tavily.com/search",
         max_results: int = 3,
         timeout_seconds: float = 12.0,
-        topic: str = "auto",
     ):
         self._provider = self._normalize_provider(provider)
         self._api_key = api_key.strip()
         self._base_url = (base_url or "https://api.tavily.com/search").strip()
         self._max_results = max(1, int(max_results))
         self._timeout_seconds = max(1.0, float(timeout_seconds))
-        self._topic = (topic or "auto").strip().lower()
         self._cache: dict[tuple[Any, ...], dict[str, Any]] = {}
         self._decision_cache: dict[tuple[str, str], dict[str, Any]] = {}
 
@@ -185,7 +183,7 @@ class SearchAgent:
             analysis_summary=analysis_summary,
         )
         try:
-            response = await llm.complete(
+            response = await llm.complete_safe(
                 system=search_prompts.SEARCH_DECISION_SYSTEM,
                 user=prompt,
                 max_tokens=320,
@@ -312,13 +310,6 @@ class SearchAgent:
             "bundle": bundle,
             "results": merged_results[: max(decision["max_results"] * max(len(queries), 1), decision["max_results"])],
         }
-
-    def _resolve_topic(self, query: str) -> str:
-        if self._topic in {"general", "news", "finance"}:
-            return self._topic
-        if re.search(r"(stock|stocks|market|markets|earnings|fed|inflation|crypto|bitcoin|ethereum|nasdaq|s&p|finance|trading|投资|股票|美股|加密货币|财报|通胀)", query, re.IGNORECASE):
-            return "finance"
-        return "general"
 
     def _format_prompt_context(self, *, stage: str, decision: dict[str, Any], payload: dict[str, Any]) -> str:
         bundle = payload.get("bundle") or []

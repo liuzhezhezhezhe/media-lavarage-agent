@@ -26,7 +26,6 @@ class Settings(BaseSettings):
     search_provider: str = "disabled"  # disabled | tavily
     tavily_api_key: str = ""
     tavily_base_url: str = "https://api.tavily.com/search"
-    search_topic: str = "auto"  # auto | general | news
     search_max_results: int = Field(default=3, ge=1, le=10)
     search_timeout_seconds: float = Field(default=12.0, ge=1.0, le=60.0)
 
@@ -47,6 +46,7 @@ class Settings(BaseSettings):
     rate_limit_window_seconds: int = Field(default=60, ge=1)
     rate_limit_pipeline_per_window: int = Field(default=6, ge=1)
     rate_limit_chat_per_window: int = Field(default=20, ge=1)
+    chat_merge_window_seconds: float = Field(default=2.5, ge=0.0, le=10.0)
 
 
 settings = Settings()
