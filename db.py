@@ -259,6 +259,8 @@ def get_thought_with_outputs(thought_id: int, user_id: int) -> Optional[dict]:
 def clear_user_data(user_id: int) -> dict[str, int]:
     """Delete all records related to a specific user.
 
+    Preserves user preferences such as rewrite style.
+
     Returns deletion counters by table.
     """
     with get_conn() as conn:
@@ -289,15 +291,10 @@ def clear_user_data(user_id: int) -> dict[str, int]:
             "DELETE FROM tags WHERE user_id=?",
             (user_id,),
         )
-        cur_preferences = conn.execute(
-            "DELETE FROM user_preferences WHERE user_id=?",
-            (user_id,),
-        )
 
     return {
         "thoughts": cur_thoughts.rowcount or 0,
         "outputs": outputs_deleted,
         "chat_messages": cur_messages.rowcount or 0,
         "tags": cur_tags.rowcount or 0,
-        "user_preferences": cur_preferences.rowcount or 0,
     }

@@ -560,7 +560,7 @@ async def cmd_help(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         "*Records*\n"
         "/history \\- Last 10 processed records\n"
         "/show \\<id\\> \\[platform\\] \\- View full record \\(platform: x, medium, substack, reddit; case\\-insensitive\\)\n\n"
-        "/clear \\- Clear all your stored data\n\n"
+        "/clear \\- Clear your stored data \\(keeps /style\\)\n\n"
         "*Other*\n"
         "/style \\[text\\] \\- Set your personal rewrite style \\(or view current with /style\\)\n"
         "/status \\- Show bot status, model, and live search configuration\n"
@@ -869,10 +869,9 @@ async def cmd_clear(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     context.user_data.pop("chat_history", None)
 
     await update.message.reply_text(
-        "🧹 Cleared all your stored data.\n"
+        "🧹 Cleared your stored data. Your /style setting was kept.\n"
         f"thoughts: {deleted['thoughts']}, outputs: {deleted['outputs']}, "
-        f"messages: {deleted['chat_messages']}, tags: {deleted['tags']}, "
-        f"styles: {deleted['user_preferences']}"
+        f"messages: {deleted['chat_messages']}, tags: {deleted['tags']}"
     )
 
 

@@ -68,7 +68,7 @@ async def _set_commands(app: Application) -> None:
         BotCommand("style",   "Set your personal rewrite style"),
         BotCommand("history", "Last 10 processed records"),
         BotCommand("show",    "View record by ID (optional platform)"),
-        BotCommand("clear",   "Clear all your stored data"),
+        BotCommand("clear",   "Clear stored data but keep /style"),
         BotCommand("status",  "Show bot status"),
         BotCommand("help",    "Show all commands"),
         BotCommand("whoami",  "Show your Telegram ID"),

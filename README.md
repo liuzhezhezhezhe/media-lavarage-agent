@@ -219,7 +219,7 @@ If search is disabled or not configured, the bot falls back to the previous offl
 | `/cancel` | Authorized | Exit any active mode and **discard** accumulated session data |
 | `/history` | Authorized | Last 10 processed records |
 | `/show <id> [platform]` | Authorized | Full record; optional platform filter (`x`, `medium`, `substack`, `reddit`, case-insensitive) |
-| `/clear` | Authorized | Clear all your stored data (thoughts, outputs, messages, tags) |
+| `/clear` | Authorized | Clear all your stored data except your saved rewrite style |
 
 ### Mode behaviour
 
@@ -231,7 +231,7 @@ either mode, the following rules apply:
 | `/analyze` | Runs the pipeline on accumulated messages, then exits the mode. In `/chat`, only the current session transcript (**user + assistant**) is analyzed. The bot returns analysis + generated platform summary (not full rewrites); use `/show <id> [platform]` for details. Session data is **kept** until analysis completes, then cleaned up. |
 | `/cancel` | Exits the mode immediately. All unsaved session data is **discarded**. |
 | `/tag` | Places a marker and exits the mode. Accumulated data since the last tag is **discarded**. |
-| `/clear` | Clears all your stored data and exits the mode. |
+| `/clear` | Clears all your stored data except your saved rewrite style, then exits the mode. |
 | `/process` (in chat mode) | Switches directly to process mode. Chat session data is **discarded**. |
 | `/chat` (in process mode) | Switches directly to chat mode. |
 | `/chat` (in chat mode) | Rejected explicitly. Use `/cancel`, then `/chat`, to start a fresh chat session. |
