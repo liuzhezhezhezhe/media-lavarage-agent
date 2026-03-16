@@ -1,17 +1,33 @@
 # Media Leverage Agent
 
-> A self-hosted Telegram bot that turns raw ideas, conversation logs, and uploaded files
-> into platform-ready content — powered by any OpenAI-compatible LLM.
+> A self-hosted Telegram bot for turning raw ideas, conversation logs, and uploaded files
+> into platform-native content across X, Substack, Medium, and Reddit.
 
 [![Python](https://img.shields.io/badge/python-3.11%2B-blue)](https://www.python.org/)
 [![License: MIT](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 [![python-telegram-bot](https://img.shields.io/badge/python--telegram--bot-20%2B-blue)](https://python-telegram-bot.org/)
 
 Send a rough idea, paste a conversation, or upload a file — the bot analyzes the content,
-decides which platforms it suits, and generates a tailored version for each: X post(s),
-Medium article, Substack newsletter, or Reddit post.
+plans where it fits best, and generates tailored outputs for X, Substack, Medium, and Reddit.
+
+This project is aimed at a simple but surprisingly hard problem: generation is easy, but
+turning rough thinking into platform-native distribution is not.
 
 ---
+
+## Why This Exists
+
+Most content tools stop at generation.
+
+But media leverage is not just about producing more text. It is about turning rough ideas
+into outputs that actually fit different platforms, audiences, and contexts.
+
+Media Leverage Agent exists to help close that gap. It treats content as an operating problem:
+analyze the source idea, decide where it belongs, then rewrite it into forms that are more
+native to X, Substack, Medium, and Reddit.
+
+The long-term direction is not just better rewriting, but better planning, adaptation, and
+feedback loops around media execution.
 
 ## Table of Contents
 
@@ -90,8 +106,8 @@ User input (text / file / conversation)
 ### Installation
 
 ```bash
-git clone https://github.com/liuzhezhezhezhe/media-lavarage-agent.git
-cd media-lavarage-agent
+git clone https://github.com/liuzhezhezhezhe/media-leverage-agent.git
+cd media-leverage-agent
 
 python3 -m venv .venv
 source .venv/bin/activate   # Windows: .venv\Scripts\activate
@@ -334,8 +350,8 @@ Recommended: a VPS with **webhook mode** enabled.
 
 ```bash
 # On the server
-git clone https://github.com/liuzhezhezhezhe/media-lavarage-agent.git
-cd media-lavarage-agent
+git clone https://github.com/liuzhezhezhezhe/media-leverage-agent.git
+cd media-leverage-agent
 python3.11 -m venv .venv && source .venv/bin/activate
 pip install -e .
 cp .env.example .env && cp config/users.json.example config/users.json
@@ -349,11 +365,11 @@ After=network.target
 
 [Service]
 User=ubuntu
-WorkingDirectory=/home/ubuntu/media-lavarage-agent
-ExecStart=/home/ubuntu/media-lavarage-agent/.venv/bin/python main.py
+WorkingDirectory=/home/ubuntu/media-leverage-agent
+ExecStart=/home/ubuntu/media-leverage-agent/.venv/bin/python main.py
 Restart=always
 RestartSec=5
-EnvironmentFile=/home/ubuntu/media-lavarage-agent/.env
+EnvironmentFile=/home/ubuntu/media-leverage-agent/.env
 
 [Install]
 WantedBy=multi-user.target
@@ -377,7 +393,7 @@ sudo systemctl restart caddy
 ## Project Structure
 
 ```
-media-lavarage-agent/
+media-leverage-agent/
 ├── main.py                    # Entry point (production)
 ├── dev.py                     # Entry point (hot reload)
 ├── config.py                  # pydantic-settings (reads .env)
